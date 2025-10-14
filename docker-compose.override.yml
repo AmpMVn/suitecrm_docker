@@ -1,0 +1,70 @@
+services:
+  phpmyadmin:
+    image: phpmyadmin:5
+    environment:
+      PMA_HOST: db
+      PMA_PORT: ${SUITECRM_DB_PORT}
+      PMA_USER: ${SUITECRM_DB_USER}
+      PMA_PASSWORD: ${SUITECRM_DB_PASSWORD}
+      UPLOAD_LIMIT: 64M
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${SUITECRM_PHPMYADMIN_PORT:-8081}:80"
+    networks: [suitecrm]
+
+  app:
+    environment:
+      XDEBUG_MODE: develop,debug
+      XDEBUG_CONFIG: client_host=host.docker.internal client_port=9003 idekey=PHPSTORM
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2g
+        reservations:
+          memory: 512m
+  db:
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2g
+        reservations:
+          memory: 1g
+
+  elasticsearch:
+    # zvedni i heap (musí být Xms == Xmx)
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2g
+
+  web:
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1g
+        reservations:
+          memory: 256m
+
+  node:
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=4096"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 6g
+        reservations:
+          memory: 1g
+
+  mailhog:
+    platform: linux/amd64

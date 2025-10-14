@@ -1,0 +1,9 @@
+
+.git
+node_modules
+.data
+docker-compose*.yml
+.env*
+public/legacy/config_override.php
+migrations/*.php~*
+vendor

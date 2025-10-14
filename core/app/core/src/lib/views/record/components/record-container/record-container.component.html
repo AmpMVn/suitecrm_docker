@@ -1,0 +1,142 @@
+<! --
+/**
+* SuiteCRM is a customer relationship management program developed by SuiteCRM Ltd.
+* Copyright (C) 2021 SuiteCRM Ltd.
+*
+* This program is free software; you can redistribute it and/or modify it under
+* the terms of the GNU Affero General Public License version 3 as published by the
+* Free Software Foundation with the addition of the following permission added
+* to Section 15 as permitted in Section 7(a): FOR ANY PART OF THE COVERED WORK
+* IN WHICH THE COPYRIGHT IS OWNED BY SUITECRM, SUITECRM DISCLAIMS THE
+* WARRANTY OF NON INFRINGEMENT OF THIRD PARTY RIGHTS.
+*
+* This program is distributed in the hope that it will be useful, but WITHOUT
+* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+* FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+* details.
+*
+* You should have received a copy of the GNU Affero General Public License
+* along with this program.  If not, see http://www.gnu.org/licenses.
+*
+* In accordance with Section 7(b) of the GNU Affero General Public License
+* version 3, these Appropriate Legal Notices must retain the display of the
+* "Supercharged by SuiteCRM" logo. If the display of the logos is not reasonably
+* feasible for technical reasons, the Appropriate Legal Notices must display
+* the words "Supercharged by SuiteCRM".
+*/
+-->
+<!-- Start Record View Container Section -->
+
+<div class="record-view-container view-container container-fluid pt-0 pb-3 small-font">
+    <div class="row">
+        <ng-container *ngIf="!swapWidgets() || (swapWidgets() && !displaySidebar())">
+            <div class="col-lg-9" [ngClass]="{ 'col-lg-12': !displaySidebar() }">
+
+                <div class="container-fluid pl-0 pr-0">
+
+                    <div *ngIf="(topWidgetConfig()?.widget?.placement ?? 'sidebar') === 'top' &&  showTopWidget() && hasTopWidgetMetadata(topWidgetConfig()?.widget)"
+                         class="row no-gutters mt-1 w-100">
+                        <div class="w-100">
+                            <scrm-top-widget [config]="topWidgetConfig().widget"
+                                             [context]="getViewContext()"
+                                             [type]="topWidgetConfig().widget.type">
+                            </scrm-top-widget>
+                        </div>
+                    </div>
+
+                    <div *ngIf="showHeaderWidgets()"
+                         class="row no-gutters mt-2">
+                        <div class="col">
+                            <div *ngFor="let widget of headerWidgetConfig().widgets" class="mb-2">
+                                <scrm-sidebar-widget [config]="widget"
+                                                     [context$]="getViewContext$()"
+                                                     [context]="getViewContext()"
+                                                     [type]="widget.type">
+                                </scrm-sidebar-widget>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row no-gutters mt-1" *ngIf="this.panels().length">
+                        <div class="col">
+                            <ng-container *ngIf="loading">
+                                <scrm-record-content-skeleton></scrm-record-content-skeleton>
+                            </ng-container>
+                            <ng-container *ngIf="!loading">
+                                <scrm-record-content [dataSource]="getContentAdapter()">
+                                    <div top-right-placement *ngIf="isOffsetExist">
+                                        <scrm-record-pagination></scrm-record-pagination>
+                                    </div>
+                                </scrm-record-content>
+                            </ng-container>
+                        </div>
+                    </div>
+
+                    <div class="row no-gutters mt-1" *ngIf="isOffsetExist && !this.panels().length">
+                        <div class="col">
+                            <div>
+                                <scrm-record-pagination></scrm-record-pagination>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div *ngIf="showBottomWidgets()"
+                         class="row no-gutters mt-2">
+                        <div class="col">
+                            <div *ngFor="let widget of bottomWidgetConfig().widgets" class="mb-3">
+                                <scrm-sidebar-widget [config]="widget"
+                                                     [context$]="getViewContext$()"
+                                                     [context]="getViewContext()"
+                                                     [type]="widget.type">
+                                </scrm-sidebar-widget>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div *ngIf="displayedSubpanelsKeys().length"
+                         class="row no-gutters pt-3 pb-4">
+                        <div class="col">
+                            <scrm-subpanel-container [config]="getSubpanelsConfig()"></scrm-subpanel-container>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </ng-container>
+
+        <ng-container *ngIf="!swapWidgets() || (swapWidgets() && displaySidebar())">
+            <div class="col-lg-3 record-widget-container pl-0"
+                 [class.mt-0]="swapWidgets()"
+                 *ngIf="displaySidebar()">
+                <div *ngIf="loading" class="row no-gutters">
+                    <div class="col pb-3">
+                        <div class="d-flex justify-content-center widget-bar rounded  pb-1 pt-3 box-loading">
+                            <div class="d-flex justify-content-center align-items-baseline widget-bar-entry p-2">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <ng-container *ngIf="!loading">
+                    <div *ngIf="(topWidgetConfig()?.widget?.placement ?? 'sidebar') === 'sidebar' &&  showTopWidget() && hasTopWidgetMetadata(topWidgetConfig()?.widget)"
+                         class="mb-3">
+                        <div class="">
+                            <scrm-top-widget [config]="topWidgetConfig().widget"
+                                             [context]="getViewContext()"
+                                             [type]="topWidgetConfig().widget.type">
+                            </scrm-top-widget>
+                        </div>
+                    </div>
+                </ng-container>
+                <div class="mb-3" *ngFor="let widget of sidebarWidgetConfig().widgets">
+                    <scrm-sidebar-widget [type]="widget.type"
+                                         [context]="getViewContext()"
+                                         [context$]="getViewContext$()"
+                                         [config]="widget">
+                    </scrm-sidebar-widget>
+                </div>
+            </div>
+        </ng-container>
+
+    </div>
+</div>
+
+<!-- End Record View Container Section -->

@@ -1,0 +1,64 @@
+# .editorconfig — jednotný styl pro celý projekt
+# Více info: https://editorconfig.org
+
+root = true
+
+# ----------------------------------------
+# Defaultní nastavení pro všechny soubory
+# ----------------------------------------
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# ----------------------------------------
+# Výjimky pro konkrétní typy souborů
+# ----------------------------------------
+
+# YAML, YML, JSON, XML — menší indent, přehlednější
+[*.{yml,yaml,json,xml}]
+indent_size = 2
+
+# Dockerfile, Makefile — tabulátory kvůli zarovnání
+[{Dockerfile,Makefile}]
+indent_style = tab
+
+# Markdown — zachovat prázdné řádky a mezery
+[*.md]
+trim_trailing_whitespace = false
+insert_final_newline = true
+indent_size = 2
+
+# Shell, Bash, ENV, .env.*, .sh
+[*.{env,sh}]
+indent_size = 2
+end_of_line = lf
+insert_final_newline = true
+
+# HTML, CSS, JS, TS, Vue, JSX
+[*.{html,css,scss,js,jsx,ts,tsx,vue}]
+indent_size = 2
+
+# Composer, PHP CS Fixer, PHPStan, PHPUnit, etc.
+[*.{neon,dist,ini}]
+indent_size = 2
+
+# PHP — Symfony/SuiteCRM styl
+[*.php]
+indent_size = 4
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Ignore vendor and build outputs (safe defaults)
+[{vendor,build,dist,node_modules,coverage}/**]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+# Git & CI related files
+[*.git*]
+end_of_line = lf
+insert_final_newline = true

@@ -1,0 +1,97 @@
+/**
+ * SuiteCRM is a customer relationship management program developed by SuiteCRM Ltd.
+ * Copyright (C) 2021 SuiteCRM Ltd.
+ *
+ * This program is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU Affero General Public License version 3 as published by the
+ * Free Software Foundation with the addition of the following permission added
+ * to Section 15 as permitted in Section 7(a): FOR ANY PART OF THE COVERED WORK
+ * IN WHICH THE COPYRIGHT IS OWNED BY SUITECRM, SUITECRM DISCLAIMS THE
+ * WARRANTY OF NON INFRINGEMENT OF THIRD PARTY RIGHTS.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+ * details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * In accordance with Section 7(b) of the GNU Affero General Public License
+ * version 3, these Appropriate Legal Notices must retain the display of the
+ * "Supercharged by SuiteCRM" logo. If the display of the logos is not reasonably
+ * feasible for technical reasons, the Appropriate Legal Notices must display
+ * the words "Supercharged by SuiteCRM".
+ */
+
+/* Panel Card header */
+.panel-card .card-header {
+  background-color: $cool-blue;
+  padding: 0 .4rem;
+  height: 2.3395rem;
+  color: $white;
+}
+
+.panel-card.collapsed .card-header {
+  -webkit-border-radius: 0.3em;
+  -moz-border-radius: 0.3em;
+  border-radius: 0.3em;
+}
+
+.card-header {
+  border-bottom: 0;
+}
+
+.panel-card {
+  -webkit-box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+  -moz-box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+  border: none;
+
+  .panel-title {
+    font-size: .875rem;
+    max-width: 445px;
+
+    .title {
+      line-height: 100%
+    }
+  }
+
+  .panel-buttons button {
+    font-size: .75rem;
+  }
+
+  .panel-buttons .dropdown-item .dropdown-item-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+  }
+}
+
+@media (max-width: 480px) {
+  .panel-card .panel-title {
+    max-width: 95px;
+  }
+
+  .panel-title {
+    .title {
+      line-height: 80% !important;
+      margin-top: .25rem;
+    }
+  }
+}
+
+@media (min-width: 480px) and (max-width: 576px) {
+  .panel-card .panel-title {
+    max-width: 150px;
+  }
+}
+
+@media (min-width: 576px) and (max-width: 768px) {
+  .panel-card .panel-title {
+    max-width: 245px;
+  }
+}
+
+

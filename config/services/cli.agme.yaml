@@ -1,0 +1,6 @@
+
+# Register addon CLI commands (kept separate from core files)
+services:
+  App\Command\:
+    resource: '../../src/Command'
+    tags: ['console.command']

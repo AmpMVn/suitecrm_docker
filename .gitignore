@@ -1,0 +1,141 @@
+# ===========================
+# OS / Editors
+# ===========================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.bak
+*.orig
+*.rej
+*.tmp
+*.temp
+*~
+
+# ===========================
+# Environment overrides (local only)
+# ===========================
+.env.local
+.env.*.local
+.env.override
+.envrc
+/.env.php
+/.env.old
+/.env.local.backup
+/.env.backup
+
+# ===========================
+# PHP / Symfony / SuiteCRM
+# ===========================
+/vendor/
+# runtime
+/cache/*
+!/cache/.gitkeep
+/logs/*
+!/logs/.gitkeep
+/tmp/*
+!/tmp/.gitkeep
+
+# JWT keys
+/config/jwt/private.pem
+/config/jwt/public.pem
+/config/jwt/*.pem
+
+# SuiteCRM legacy runtime paths
+/public/legacy/cache/
+/public/legacy/upload/*
+!/public/legacy/upload/.gitkeep
+/public/legacy/themes/*/cache/
+# common temp files from legacy extensions
+/public/legacy/custom/Extension/modules/*/Ext/Vardefs/*.php~
+/public/legacy/custom/Extension/modules/*/Ext/Layoutdefs/*.php~
+/public/legacy/custom/Extension/modules/*/Ext/Language/*.php~
+
+# ===========================
+# Frontend (Node / Vite / Nuxt / Next)
+# ===========================
+/node_modules/
+/dist/
+/build/
+/public/build/
+/public/assets/build/
+/frontend/node_modules/
+/frontend/dist/
+.yarn/
+.yarn-cache/
+.yarn-integrity
+/.pnp.*
+/coverage/
+yarn-error.log
+npm-debug.log
+.eslintcache
+.stylelintcache
+
+# optional frameworks
+/.vite/
+/.nuxt/
+/.next/
+/cypress/videos/
+/cypress/screenshots/
+
+# ===========================
+# Docker / Infra
+# ===========================
+/.data/
+/data/
+/mnt/
+/docker/data/
+/docker/tmp/
+docker-compose.override.yml        # local-only override (template stays versioned)
+
+# runtime artefacts
+*.pid
+*.pid.lock
+*.pidfile
+*.sock
+*.log
+
+# ===========================
+# Tests / QA / Static analysis
+# (share configs, ignore caches)
+# ===========================
+!phpunit.xml.dist
+!phpstan.neon
+!phpstan.neon.dist
+!php-cs-fixer.dist.php
+!rector.php
+!ecs.php
+!behat.yml.dist
+
+/phpunit.xml                 # local override only
+/behat.yml                   # local override only
+/.phpunit.result.cache
+/.php-cs-fixer.cache
+/.php-cs-fixer.dist.cache
+/.phpstan.cache
+/.coverage/
+coverage.xml
+
+# ===========================
+# Keep these templates/configs versioned
+# ===========================
+!.env.local.template
+!docker-compose.override.template.yml
+!.editorconfig
+!.gitattributes
+!.gitignore
+!Makefile
+!Dockerfile
+!composer.json
+!composer.lock
+!package.json
+!vite.config.*
+!webpack.config.*
+!config/
+!src/
+!public/
+!templates/
+!translations/
+!bin/

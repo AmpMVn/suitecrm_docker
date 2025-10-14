@@ -1,0 +1,147 @@
+name: ${SUITECRM_PROJECT_NAME}
+
+services:
+  web:
+    image: nginx:1.27-alpine
+    depends_on:
+      app:
+        condition: service_started
+    ports: ["${SUITECRM_APP_PORT}:80"]
+    volumes:
+      - ./:/var/www/html
+      - ./ops/nginx/conf.d:/etc/nginx/conf.d:ro
+      - uploads:/var/www/html/public/legacy/upload
+    networks: [suitecrm]
+
+  app:
+    build:
+      context: .
+      dockerfile: ops/php/Dockerfile
+      args:
+        SKIP_FE: "0"
+    environment:
+      DB_HOST: db
+      DB_PORT: ${SUITECRM_DB_PORT}
+      DB_NAME: ${SUITECRM_DB_NAME}
+      DB_USER: ${SUITECRM_DB_USER}
+      DB_PASSWORD: ${SUITECRM_DB_PASSWORD}
+      REDIS_HOST: ${SUITECRM_REDIS_HOST}
+      REDIS_PORT: ${SUITECRM_REDIS_PORT}
+      SMTP_HOST: ${SUITECRM_SMTP_HOST}
+      SMTP_PORT: ${SUITECRM_SMTP_PORT}
+      ELASTIC_HOST: ${SUITECRM_ELASTIC_HOST}
+      ELASTIC_PORT: ${SUITECRM_ELASTIC_PORT}
+      APP_ENV: ${APP_ENV}
+      APP_DEBUG: ${APP_DEBUG}
+      AUTH_TYPE: ${AUTH_TYPE}
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN}
+      SITE_URL: http://localhost:${SUITECRM_APP_PORT}   # nebo tvoje veřejná URL
+    volumes:
+      - ./:/var/www/html
+      - uploads:/var/www/html/public/legacy/upload
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      elasticsearch:
+        condition: service_started
+    networks: [suitecrm]
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: ops/php/Dockerfile
+    command: [ "sh", "-lc", "while true; do php -f public/legacy/cron.php; sleep 60; done" ]
+    environment:
+      DB_HOST: db
+      DB_PORT: ${SUITECRM_DB_PORT}
+      DB_NAME: ${SUITECRM_DB_NAME}
+      DB_USER: ${SUITECRM_DB_USER}
+      DB_PASSWORD: ${SUITECRM_DB_PASSWORD}
+      REDIS_HOST: ${SUITECRM_REDIS_HOST}
+      REDIS_PORT: ${SUITECRM_REDIS_PORT}
+    volumes:
+      - ./:/var/www/html
+      - uploads:/var/www/html/public/legacy/upload
+    depends_on:
+      app:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks: [suitecrm]
+
+  db:
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: ${SUITECRM_DB_NAME}
+      MARIADB_USER: ${SUITECRM_DB_USER}
+      MARIADB_PASSWORD: ${SUITECRM_DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${SUITECRM_DB_ROOT_PASSWORD}
+    command:
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_unicode_ci"
+      - "--skip-name-resolve"
+    ports: [ "${SUITECRM_DB_PORT_HOST}:${SUITECRM_DB_PORT}" ]
+    volumes:
+      - ${SUITECRM_DB_DATA_DIR}:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin -h 127.0.0.1 -uroot -p$$MARIADB_ROOT_PASSWORD ping --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [ suitecrm ]
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    networks: [suitecrm]
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${SUITECRM_ELASTIC_VERSION}
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports: ["${SUITECRM_ELASTIC_PORT}:9200"]
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks: [suitecrm]
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "127.0.0.1:${SUITECRM_MAILHOG_PORT_HOST:-8025}:8025"
+    networks: [suitecrm]
+
+  node:
+    image: node:20-alpine
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+      - node_modules:/workspace/node_modules
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "${SUITECRM_NODE_DEV_PORT}"
+      NUXT_HOST: "0.0.0.0"
+      NUXT_PORT: "${SUITECRM_NODE_DEV_PORT}"
+    ports: ["${SUITECRM_NODE_DEV_PORT}:${SUITECRM_NODE_DEV_PORT}"]
+    networks: [suitecrm]
+
+volumes:
+  uploads:
+    name: "${SUITECRM_PROJECT_NAME}_uploads"
+  redis_data:
+    name: "${SUITECRM_PROJECT_NAME}_redis_data"
+  es_data:
+    name: "${SUITECRM_PROJECT_NAME}_es_data"
+  node_modules:
+    name: "${SUITECRM_PROJECT_NAME}_node_modules"
+
+networks:
+  suitecrm:
+    name: ${SUITECRM_PROJECT_NAME}_net
+    driver: bridge

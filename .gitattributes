@@ -1,0 +1,104 @@
+# =======================================================
+# 📦 BASE SETTINGS
+# =======================================================
+
+# Všechny textové soubory normalizovat na LF při commitu
+* text=auto eol=lf
+
+# Git má používat UTF-8 pro diff a merge
+*.php        text diff=php
+*.js         text diff=javascript
+*.ts         text diff=typescript
+*.jsx        text diff=javascript
+*.tsx        text diff=typescript
+*.json       text
+*.yml        text
+*.yaml       text
+*.xml        text
+*.html       text diff=html
+*.css        text diff=css
+*.scss       text diff=css
+*.md         text
+*.txt        text
+*.ini        text
+*.env        text
+*.sh         text
+*.sql        text
+*.twig       text diff=html
+*.neon       text
+*.graphql    text
+*.conf       text
+*.Dockerfile text
+*.make       text
+*.mk         text
+*.gitignore  text
+*.editorconfig text
+*.gitattributes text
+LICENSE      text
+README*      text
+
+# =======================================================
+# 🧱 PHP / SYMFONY / SUITECRM
+# =======================================================
+# Difff pro composer.lock, ať je čitelný
+composer.lock text diff=lock
+
+# PHP patch/diff lepší se zvýrazněním
+*.php diff=php
+
+# =======================================================
+# 🧩 FRONTEND
+# =======================================================
+# JSON / JS / TS / Vue / JSX
+package.json  text diff=json
+yarn.lock     text
+pnpm-lock.yaml text
+*.vue         text diff=html
+
+# =======================================================
+# 🧪 TESTS / QA
+# =======================================================
+phpunit.xml.dist     text
+phpstan.neon         text
+phpstan.neon.dist    text
+php-cs-fixer.dist.php text
+ecs.php              text
+rector.php           text
+
+# =======================================================
+# 🖼️ BINARY FILES (no diff)
+# =======================================================
+*.ico   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.svgz  binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.tar   binary
+*.tgz   binary
+*.bz2   binary
+*.7z    binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.otf   binary
+*.mp3   binary
+*.mp4   binary
+*.mov   binary
+*.avi   binary
+
+# =======================================================
+# 🧰 LOCAL / IGNORE
+# =======================================================
+# Žádný merge pro lock / cache soubory
+composer.lock merge=ours
+package-lock.json merge=ours
+yarn.lock merge=ours
+pnpm-lock.yaml merge=ours
+*.cache merge=ours
+*.min.* merge=ours

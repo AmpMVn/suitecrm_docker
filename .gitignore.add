@@ -1,0 +1,6 @@
+
+# --- SuiteCRM docker/dev addons ---
+.env.local
+docker-compose.override.yml
+.data/
+helm/.values-*.yaml
