@@ -162,9 +162,11 @@ fresh: ## Kompletní fresh se self-heal DB, CLI instalací a migracemi
 	echo "→ Waiting for app DB login (from app container)"; \
 	bash ops/scripts/app-wait-db.sh; \
 	echo "→ Composer install (inside app)"; \
-	docker compose $(ENV_FILES) exec -T app bash -lc 'COMPOSER_MEMORY_LIMIT=-1 composer install --no-interaction --prefer-dist --optimize-autoloader || true'; \
-	echo "→ SuiteCRM CLI install"; \
+    docker compose $(ENV_FILES) exec -T app bash -lc 'COMPOSER_MEMORY_LIMIT=-1 composer install --no-scripts --no-interaction --prefer-dist --optimize-autoloader || true'; \
+    echo "→ SuiteCRM CLI install"; \
 	bash ops/scripts/app-install.sh; \
+	echo "→ Composer post-install (inside app)"; \
+    docker compose $(ENV_FILES) exec -T app bash -lc 'composer run-script post-install-cmd || { php bin/console cache:clear || true; php bin/console cache:warmup || true; }'; \
 	echo "→ Bringing full stack up"; \
 	docker compose $(ENV_FILES) up -d; \
 	echo "→ Doctrine migrations (optional)"; \

@@ -20,7 +20,7 @@ echo "   Using SITE_URL: ${SITE_URL}"
 
 # Spusť uvnitř app: sanity check, PURGE, PATCH InstallHandler, instalátor
 # (předáme SITE_URL do prostředí procesu uvnitř kontejneru)
-if ! docker compose "${ENV_FILES[@]}" exec -T -e SITE_URL="${SITE_URL}" app bash -lc '
+if ! docker compose "${ENV_FILES[@]}" run --rm -T -e SITE_URL="${SITE_URL}" app bash -lc '
   set -euo pipefail
 
   echo "↪ sanity check: mysqli connect using app env"
