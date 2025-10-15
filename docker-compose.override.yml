@@ -11,7 +11,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${SUITECRM_PHPMYADMIN_PORT:-8081}:80"
+      - "${SUITECRM_WEB_HOST:-127.0.0.1}:${SUITECRM_PHPMYADMIN_PORT:-8081}:80"
     networks: [suitecrm]
 
   app:

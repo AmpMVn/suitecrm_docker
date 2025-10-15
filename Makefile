@@ -50,8 +50,16 @@ yarn-watch: ## Spustí watch mód pro vývoj (yarn watch)
 
 ##@ Database
 
+# ✅ NEW: zajistí existenci DB data diru dle aktuálních .env + .env.local
+.PHONY: db-data-dir
+db-data-dir:
+	@set -a; [ -f ./.env ] && . ./.env; [ -f ./.env.local ] && . ./.env.local; set +a; \
+    DATA_DIR=./.data/$${SUITECRM_PROJECT_NAME:-suitecrm}/mariadb; \
+	echo "📁 Ensuring DB data dir: $$DATA_DIR"; \
+	mkdir -p "$$DATA_DIR"
+
 .PHONY: db-up
-db-up: ## Spustí (nebo vytvoří) DB kontejner
+db-up: db-data-dir ## Spustí (nebo vytvoří) DB kontejner
 	docker compose $(ENV_FILES) up -d db
 
 .PHONY: db-wait
@@ -78,7 +86,7 @@ db-ensure-user:
 .PHONY: db-nuke
 db-nuke: ## Natrvalo smaže DB data (bind-mount) – přesune do .bak-<timestamp>
 	@set -a; [ -f ./.env ] && . ./.env; [ -f ./.env.local ] && . ./.env.local; set +a; \
-	DATA_DIR=$${SUITECRM_DB_DATA_DIR:-./.data/$${SUITECRM_PROJECT_NAME:-suitecrm}/mariadb}; \
+    DATA_DIR=./.data/$${SUITECRM_PROJECT_NAME:-suitecrm}/mariadb; \
 	TS=$$(date +%Y%m%d-%H%M%S); \
 	[ -d "$$DATA_DIR" ] || { echo "No data dir $$DATA_DIR"; exit 0; }; \
 	BKP="$$DATA_DIR.bak-$$TS"; \
@@ -89,108 +97,122 @@ db-nuke: ## Natrvalo smaže DB data (bind-mount) – přesune do .bak-<timestamp
 	echo "✅ Done (backup: $$BKP)"
 
 ##@ Utils
+
+.PHONY: ports
+ports: ## Vypíše přehled všech host portů a URL pro tuto instanci
+	@set -a; [ -f ./.env ] && . ./.env; [ -f ./.env.local ] && . ./.env.local; set +a; \
+	H=$${SUITECRM_WEB_HOST:-localhost}; \
+	echo "Project: $${SUITECRM_PROJECT_NAME:-suitecrm}"; \
+	printf "%-16s %s\n" "Web:"            "http://$$H:$${SUITECRM_WEB_PORT_HOST:-8080}"; \
+	printf "%-16s %s\n" "phpMyAdmin:"     "http://$$H:$${SUITECRM_PHPMYADMIN_PORT:-8081}"; \
+	printf "%-16s %s\n" "Mailhog:"        "http://$$H:$${SUITECRM_MAILHOG_PORT_HOST:-8025}"; \
+	printf "%-16s %s\n" "Elasticsearch:"  "http://$$H:$${SUITECRM_ES_PORT_HOST:-9201}"; \
+	printf "%-16s %s\n" "Node dev:"       "http://$$H:$${SUITECRM_NODE_DEV_PORT_HOST:-5173}"; \
+	printf "%-16s %s\n" "DB:"             "$$H:$${SUITECRM_DB_PORT_HOST:-3308}  (container:$${SUITECRM_DB_PORT:-3306})"; \
+	printf "%-16s %s\n" "Redis:"          "$$H:$${SUITECRM_REDIS_PORT_HOST:--}  (container:$${SUITECRM_REDIS_PORT:-6379})"; \
+	echo "Network: $${SUITECRM_NETWORK_NAME:-$${SUITECRM_PROJECT_NAME:-suitecrm}_net}"
+
 .PHONY: db-info
 db-info: ## Vypíše přístup k DB a otestuje spojení z hosta
-	@echo "Host: 127.0.0.1"
-	@echo "Port: $${SUITECRM_DB_PORT_HOST:-3308}"
-	@echo "User: $${SUITECRM_DB_USER:-suitecrm}"
-	@echo "Pass: $${SUITECRM_DB_PASSWORD:-secret}"
-	@echo "DB:   $${SUITECRM_DB_NAME:-suitecrm_suitecrm}"
-	@nc -vz 127.0.0.1 $${SUITECRM_DB_PORT_HOST:-3308} || true
+	@set -a; [ -f ./.env ] && . ./.env; [ -f ./.env.local ] && . ./.env.local; set +a; \
+	echo "Host: $${SUITECRM_WEB_HOST:-127.0.0.1}"; \
+	echo "Port: $${SUITECRM_DB_PORT_HOST:-3308}"; \
+	echo "User: $${SUITECRM_DB_USER:-suitecrm}"; \
+	echo "Pass: $${SUITECRM_DB_PASSWORD:-secret}"; \
+	echo "DB:   $${SUITECRM_DB_NAME:-suitecrm_suitecrm}"; \
+	nc -vz $${SUITECRM_WEB_HOST:-127.0.0.1} $${SUITECRM_DB_PORT_HOST:-3308} || true
+
+.PHONY: url
+url: ## Vypíše URL běžící instance (odvozeno z portu)
+	@set -a; [ -f ./.env ] && . ./.env; [ -f ./.env.local ] && . ./.env.local; set +a; \
+	HOST=$${SUITECRM_WEB_HOST:-localhost}; \
+	PORT=$${SUITECRM_WEB_PORT_HOST:-8080}; \
+	echo "App URL: http://$$HOST:$$PORT"
 
 ##@ Setup
 
 .PHONY: fresh
 fresh: ## Kompletní fresh se self-heal DB, CLI instalací a migracemi
-	@echo "🚨 Killing previous stack (containers, orphans)"
-	- docker compose $(ENV_FILES) down --remove-orphans || true
-
-	@echo "🧹 Freeing DB port if busy"
-	- @PORT=$${SUITECRM_DB_PORT_HOST:-3308}; \
-	  CID=$$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:'"$$PORT"'->/ {print $$1; exit}'); \
-	  if [ -n "$$CID" ]; then echo "Stopping container using port $$PORT: $$CID"; docker stop "$$CID" >/devnull; fi
-
-	@echo "🧹 Freeing well-known ports if busy (8025=Mailhog)"
-	- @CID=$$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:8025->/ {print $$1}' | head -n1); \
-	  if [ -n "$$CID" ]; then echo "Stopping container using 8025: $$CID"; docker stop $$CID >/dev/null; fi
-
-	@echo "🚀 Building containers"
-	docker compose $(ENV_FILES) build
-
-	@echo "→ Starting infra"
-	docker compose $(ENV_FILES) up -d db redis elasticsearch mailhog
-	$(MAKE) db-up
-	$(MAKE) db-wait
-	$(MAKE) db-reset
-	$(MAKE) db-ensure-user
-
-	@echo "→ Starting app service"
-	docker compose $(ENV_FILES) up -d app
-
-	@echo "→ Waiting for app DB login (from app container)"
-	bash ops/scripts/app-wait-db.sh
-
-	@echo "→ SuiteCRM CLI install"
-	bash ops/scripts/app-install.sh
-
-	@echo "→ Composer install (inside app)"
-	docker compose $(ENV_FILES) exec -T app bash -lc 'COMPOSER_MEMORY_LIMIT=-1 composer install --no-interaction'
-
-	@echo "→ Bringing full stack up"
-	docker compose $(ENV_FILES) up -d
-
-	@echo "→ Doctrine migrations (optional)"
-	docker compose $(ENV_FILES) exec -T app php bin/console doctrine:migrations:migrate -n || true
-
-	@echo "✅ Fresh SuiteCRM ready at http://localhost:$${SUITECRM_APP_PORT:-8080}"
+	@set -a; [ -f ./.env ] && . ./.env; [ -f ./.env.local ] && . ./.env.local; set +a; \
+	WEB_HOST=$${SUITECRM_WEB_HOST:-127.0.0.1}; \
+	WEB_PORT=$${SUITECRM_WEB_PORT_HOST:-8080}; \
+	DB_PORT=$${SUITECRM_DB_PORT_HOST:-3308}; \
+	MAILHOG_PORT=$${SUITECRM_MAILHOG_PORT_HOST:-8025}; \
+	echo "🚨 Killing previous stack (containers, orphans)"; \
+	docker compose $(ENV_FILES) down --remove-orphans || true; \
+	echo "🧹 Freeing web port $$WEB_PORT (if busy)"; \
+	CID=$$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:'"$$WEB_PORT"'->/ {print $$1; exit}'); \
+	if [ -n "$$CID" ]; then echo "Stopping container using $$WEB_PORT: $$CID"; docker stop "$$CID" >/dev/null; fi; \
+	echo "🧹 Freeing DB port $$DB_PORT (if busy)"; \
+	CID=$$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:'"$$DB_PORT"'->/ {print $$1; exit}'); \
+	if [ -n "$$CID" ]; then echo "Stopping container using $$DB_PORT: $$CID"; docker stop "$$CID" >/dev/null; fi; \
+	echo "🧹 Freeing Mailhog port $$MAILHOG_PORT (if busy)"; \
+	CID=$$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:'"$$MAILHOG_PORT"'->/ {print $$1; exit}'); \
+	if [ -n "$$CID" ]; then echo "Stopping container using $$MAILHOG_PORT: $$CID"; docker stop "$$CID" >/dev/null; fi; \
+	echo "🚀 Building containers"; \
+	docker compose $(ENV_FILES) build; \
+	echo "→ Starting infra"; \
+	docker compose $(ENV_FILES) up -d db redis elasticsearch mailhog; \
+	$(MAKE) db-up; \
+	$(MAKE) db-wait; \
+	$(MAKE) db-reset; \
+	$(MAKE) db-ensure-user; \
+	echo "→ Starting app service"; \
+	docker compose $(ENV_FILES) up -d app; \
+	echo "→ Waiting for app DB login (from app container)"; \
+	bash ops/scripts/app-wait-db.sh; \
+	echo "→ Composer install (inside app)"; \
+	docker compose $(ENV_FILES) exec -T app bash -lc 'COMPOSER_MEMORY_LIMIT=-1 composer install --no-interaction --prefer-dist --optimize-autoloader || true'; \
+	echo "→ SuiteCRM CLI install"; \
+	bash ops/scripts/app-install.sh; \
+	echo "→ Bringing full stack up"; \
+	docker compose $(ENV_FILES) up -d; \
+	echo "→ Doctrine migrations (optional)"; \
+	docker compose $(ENV_FILES) exec -T app php bin/console doctrine:migrations:migrate -n || true; \
+	echo "✅ Fresh SuiteCRM ready at http://$${SUITECRM_WEB_HOST:-localhost}:$${SUITECRM_WEB_PORT_HOST:-8080}"
 
 ##@ Utils
+
 .PHONY: kill-port
-kill-port: ## Kill container/listener on a given host port OR by SERVICE (SERVICE=phpmyadmin|mailhog|app) or PORT=xxxx
+kill-port: ## Kill container/listener on a given host port OR by SERVICE (SERVICE=app|phpmyadmin|mailhog|db|es|redis|node) or PORT=xxxx
 	@set -e; \
 	# 1) načti .env/.env.local (kvůli portům služeb)
 	set -a; [ -f ./.env ] && . ./.env; [ -f ./.env.local ] && . ./.env.local; set +a; \
 	# 2) rozlišení portu podle SERVICE/PORT
 	if [ -n "$$SERVICE" ] 2>/dev/null; then \
 		case "$$SERVICE" in \
+			app)        PORT="$${SUITECRM_WEB_PORT_HOST:-8080}" ;; \
 			phpmyadmin) PORT="$${SUITECRM_PHPMYADMIN_PORT:-8081}" ;; \
 			mailhog)    PORT="$${SUITECRM_MAILHOG_PORT_HOST:-8025}" ;; \
-			app)        PORT="$${SUITECRM_APP_PORT:-8080}" ;; \
-			*) echo "Unknown SERVICE='$$SERVICE'. Use SERVICE=phpmyadmin|mailhog|app or PORT=<num>"; exit 1 ;; \
+			db)         PORT="$${SUITECRM_DB_PORT_HOST:-3308}" ;; \
+			es)         PORT="$${SUITECRM_ES_PORT_HOST:-9201}" ;; \
+			redis)      PORT="$${SUITECRM_REDIS_PORT_HOST:-0}" ;; \
+			node)       PORT="$${SUITECRM_NODE_DEV_PORT_HOST:-5173}" ;; \
+			*) echo "Unknown SERVICE='$$SERVICE'. Use SERVICE=app|phpmyadmin|mailhog|db|es|redis|node or PORT=<num>"; exit 1 ;; \
 		esac; \
 	elif [ -n "$$PORT" ] 2>/dev/null; then \
 		:; \
 	else \
-		echo "Set PORT=<num> or SERVICE=phpmyadmin|mailhog|app"; exit 1; \
+		echo "Set PORT=<num> or SERVICE=app|phpmyadmin|mailhog|db|es|redis|node"; exit 1; \
 	fi; \
 	echo "→ Releasing port $$PORT"; \
 	# 3) pokusně zastav compose službu, když odpovídá zvolenému portu
-	if [ "$$SERVICE" = "phpmyadmin" ] 2>/dev/null; then \
-		echo "  Trying: docker compose stop phpmyadmin"; \
-		docker compose $(ENV_FILES) stop phpmyadmin >/dev/null 2>&1 || true; \
-	fi; \
+	if [ "$$SERVICE" = "phpmyadmin" ] 2>/dev/null; then docker compose $(ENV_FILES) stop phpmyadmin >/dev/null 2>&1 || true; fi; \
+	if [ "$$SERVICE" = "mailhog" ] 2>/dev/null;    then docker compose $(ENV_FILES) stop mailhog    >/dev/null 2>&1 || true; fi; \
+	if [ "$$SERVICE" = "app" ] 2>/dev/null;        then docker compose $(ENV_FILES) stop web        >/dev/null 2>&1 || true; fi; \
+	if [ "$$SERVICE" = "db" ] 2>/dev/null;         then docker compose $(ENV_FILES) stop db         >/dev/null 2>&1 || true; fi; \
+	if [ "$$SERVICE" = "es" ] 2>/dev/null;         then docker compose $(ENV_FILES) stop elasticsearch >/dev/null 2>&1 || true; fi; \
+	if [ "$$SERVICE" = "redis" ] 2>/dev/null;      then docker compose $(ENV_FILES) stop redis      >/dev/null 2>&1 || true; fi; \
+	if [ "$$SERVICE" = "node" ] 2>/dev/null;       then docker compose $(ENV_FILES) stop node       >/dev/null 2>&1 || true; fi; \
 	# 4) najdi a zastav libovolný Docker kontejner, který port drží (běžící i exited)
 	CID=$$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:'''$$PORT'''->/ {print $$1}' | head -n1); \
-	if [ -n "$$CID" ]; then \
-		echo "  Stopping Docker container on $$PORT: $$CID"; \
-		docker stop "$$CID" >/dev/null || true; \
-	fi; \
-	# (pro jistotu ještě jednou – i mezi exited může být zombie proxy)
+	if [ -n "$$CID" ]; then echo "  Stopping Docker container on $$PORT: $$CID"; docker stop "$$CID" >/dev/null || true; fi; \
 	CID_ALL=$$(docker ps -a --format '{{.ID}} {{.Ports}}' | awk '/:'''$$PORT'''->/ {print $$1}' | head -n1); \
-	if [ -n "$$CID_ALL" ]; then \
-		echo "  Removing Docker container bound to $$PORT: $$CID_ALL"; \
-		docker rm -f "$$CID_ALL" >/dev/null || true; \
-	fi; \
+	if [ -n "$$CID_ALL" ]; then echo "  Removing Docker container bound to $$PORT: $$CID_ALL"; docker rm -f "$$CID_ALL" >/dev/null || true; fi; \
 	# 5) zabij lokální proces naslouchající na portu (host)
 	PID=$$(lsof -tiTCP:$$PORT -sTCP:LISTEN 2>/dev/null || true); \
-	if [ -n "$$PID" ]; then \
-		echo "  Killing local process $$PID on port $$PORT"; \
-		kill $$PID || true; \
-	else \
-		echo "  No local process on $$PORT"; \
-	fi; \
+	if [ -n "$$PID" ]; then echo "  Killing local process $$PID on port $$PORT"; kill $$PID || true; else echo "  No local process on $$PORT"; fi; \
 	echo "✅ Port $$PORT is free"
-
 
 .PHONY: down-hard
 down-hard: ## Stop + remove containers, networks, volumes
@@ -198,4 +220,4 @@ down-hard: ## Stop + remove containers, networks, volumes
 
 .PHONY: help
 help: ## Zobrazí tuto nápovědu
-	@awk 'BEGIN {FS = ":.*##"; printf "\nPoužití:\n  make \033[36m<cil>\033[0m\n"} /^[a-zA-Z0-9_.-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nPoužití:\n  make \033[36m<cil>\033[0m\n"} /^[a-zA-Z0-9_.-]+:.*?##/ { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)

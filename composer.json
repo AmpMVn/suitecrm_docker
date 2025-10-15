@@ -179,12 +179,22 @@
         "public/legacy/modules/"
       ]
     },
-    "exclude-from-classmap": [
-      "public/legacy/include/nusoap/*",
-      "public/legacy/include/nusoap/**"
-    ],
     "classmap": [
-      "public/legacy/Api/"
+      "public/legacy/Api/",
+      "public/legacy/modules/",
+      "public/legacy/include/",
+      "public/legacy/lib/"
+    ],
+    "exclude-from-classmap": [
+      "public/legacy/modules/ModuleBuilder/views/view.tree.php",
+      "public/legacy/modules/Alerts/views/view.default.php",
+      "public/legacy/modules/Project/gantt.php",
+      "public/legacy/modules/Documents/DocumentPopupPicker.php",
+      "public/legacy/include/EditView/EditView.php",
+      "public/legacy/include/SearchForm/SearchForm.php",
+      "public/legacy/include/social/twitter/twitter_auth/twitteroauth/OAuth.php",
+      "public/legacy/modules/*/Popup_picker.php"
+    ,"public/legacy/include/nusoap/nusoap.php"
     ]
   },
   "autoload-dev": {

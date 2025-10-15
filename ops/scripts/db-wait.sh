@@ -13,10 +13,12 @@ ENV_FILES=(--env-file .env)
 [ -f ./.env.local ] && ENV_FILES+=(--env-file .env.local)
 
 PROJECT_NAME="${SUITECRM_PROJECT_NAME:-suitecrm}"
-DATA_DIR="${SUITECRM_DB_DATA_DIR:-./.data/${PROJECT_NAME}/mariadb}"
+DATA_DIR="./.data/${PROJECT_NAME}/mariadb"
 AUTO_FIX="${SUITECRM_AUTO_FIX_DB:-1}"
 TRIES=60
 
+# Zajisti, že mount cílová složka existuje (jinak DB nenastartuje)
+mkdir -p "${DATA_DIR}"
 # Zajisti, že DB běží
 docker compose "${ENV_FILES[@]}" up -d db >/dev/null
 

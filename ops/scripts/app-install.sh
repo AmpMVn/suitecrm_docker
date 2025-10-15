@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Předáme .env Dockeru
+# Předáme .env Dockeru (kvůli docker compose substituci)
 ENV_FILES=(--env-file .env)
 [ -f ./.env.local ] && ENV_FILES+=(--env-file .env.local)
 
-# Načti port z hostího .env
+# Načti env z hosta a připrav SITE_URL
 set -a
 [ -f ./.env ] && . ./.env
 [ -f ./.env.local ] && . ./.env.local
 set +a
 
-PORT="${SUITECRM_APP_PORT:-8080}"
-SITE_URL="http://localhost:${PORT}"
+# Preferuj SITE_URL z envu, jinak odvoď z portu; odstraň trailing slash
+SITE_URL="${SITE_URL:-http://localhost:${SUITECRM_WEB_PORT_HOST:-8080}}"
+SITE_URL="${SITE_URL%/}"
 
 echo "→ SuiteCRM CLI install (script)"
 echo "   Using SITE_URL: ${SITE_URL}"
 
-# Spusť uvnitř app: sanity check, PURGE starých konfiguráků/cache, pak instalátor
-if ! docker compose "${ENV_FILES[@]}" exec -T app bash -lc '
+# Spusť uvnitř app: sanity check, PURGE, PATCH InstallHandler, instalátor
+# (předáme SITE_URL do prostředí procesu uvnitř kontejneru)
+if ! docker compose "${ENV_FILES[@]}" exec -T -e SITE_URL="${SITE_URL}" app bash -lc '
   set -euo pipefail
 
   echo "↪ sanity check: mysqli connect using app env"
@@ -30,6 +32,30 @@ if ! docker compose "${ENV_FILES[@]}" exec -T app bash -lc '
   # Symfony env cache
   rm -f .env.local.php || true
 
+  # === BACKUP: .env.local (pokud existuje) ===
+  if [ -f .env.local ]; then
+    echo "↪ backing up existing .env.local"
+    cp .env.local /tmp/.env.local.preinstall
+  fi
+
+  # --- PATCH: skip .env.local creation if it already exists ---
+  echo "↪ patching SuiteCRM installer to respect existing .env.local"
+  f="src/App/Install/LegacyHandler/InstallHandler.php"
+  if [ -f "$f" ] && ! grep -q "Skipping .env.local creation" "$f"; then
+    # vloží podmínku do createEnv() hned po chdir($this->projectDir);
+    awk "/chdir\\(\\\\\\$this->projectDir\\);/ && !done { \
+      print; \
+      print \"\"; \
+      print \"            // Skip if user already provides their own .env.local\"; \
+      print \"            if ((new \\\\\\\\Symfony\\\\\\\\Component\\\\\\\\Filesystem\\\\\\\\Filesystem())->exists(\\x27.env.local\\x27)) {\"; \
+      print \"                \\\\\\$this->logger->info(\\x27Skipping .env.local creation: file already exists\\x27);\"; \
+      print \"                chdir(\\\\\\$this->legacyDir);\"; \
+      print \"                return true;\"; \
+      print \"            }\"; \
+      done=1; next }1" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  fi
+  # --- END PATCH ---
+
   echo "↪ running installer"
   php -d upload_max_filesize=20M -d post_max_size=20M \
     bin/console suitecrm:app:install \
@@ -39,9 +65,29 @@ if ! docker compose "${ENV_FILES[@]}" exec -T app bash -lc '
       -P "$DB_PASSWORD" \
       -H "$DB_HOST" \
       -N "$DB_NAME" \
-      -S "__SITE_URL__" \
+      -S "$SITE_URL" \
       -d "no"
-' | sed "s|__SITE_URL__|${SITE_URL}|"; then
+
+  # === RESTORE: .env.local po instalaci (pokud byla záloha) ===
+  if [ -f /tmp/.env.local.preinstall ]; then
+    echo "↪ restoring your .env.local (preserving APP_SECRET if needed)"
+    GEN_APP_SECRET=""
+    if [ -f .env.local ]; then
+      GEN_APP_SECRET="$(grep -E '^APP_SECRET=' .env.local || true)"
+    fi
+    if grep -qE "^APP_SECRET=" /tmp/.env.local.preinstall; then
+      cp /tmp/.env.local.preinstall .env.local
+    else
+      if [ -n "$GEN_APP_SECRET" ]; then
+        { cat /tmp/.env.local.preinstall; echo "$GEN_APP_SECRET"; } > .env.local
+      else
+        NEW_APP_SECRET="$(php -r "echo bin2hex(random_bytes(16));")"
+        { cat /tmp/.env.local.preinstall; echo "APP_SECRET=$NEW_APP_SECRET"; } > .env.local
+      fi
+    fi
+    rm -f /tmp/.env.local.preinstall
+  fi
+'; then
   echo "❌ Installer failed — printing grants for debug (both @% and @appIP):"
   docker compose "${ENV_FILES[@]}" exec -T db sh -lc '
     appip=$(getent hosts app 2>/dev/null | awk "{print \$1; exit}" || true)
