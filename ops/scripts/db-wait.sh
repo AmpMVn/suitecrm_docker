@@ -29,19 +29,27 @@ if [[ -z "${CID}" ]]; then
 fi
 
 function test_db() {
-  # OK pokud je container run/healthy a SELECT 1 projde
   local status health
   status="$(docker inspect -f '{{.State.Status}}' "$CID" 2>/dev/null || echo "missing")"
   health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$CID" 2>/dev/null || true)"
   echo "   status=${status} health=${health}"
 
-  if [[ "${status}" == "running" ]] && { [[ -z "${health}" ]] || [[ "${health}" == "healthy" ]]; }; then
-    if docker compose "${ENV_FILES[@]}" exec -T db sh -lc \
-      'mariadb -h 127.0.0.1 -uroot -p"$MARIADB_ROOT_PASSWORD" -e "SELECT 1" >/dev/null 2>&1'
-    then
-      return 0
-    fi
+  if [[ "${status}" != "running" ]]; then
+    return 1
   fi
+
+  # 1) rychlý ping (stejně jako healthcheck)
+  if ! docker compose "${ENV_FILES[@]}" exec -T db sh -lc \
+      'mariadb-admin -h 127.0.0.1 -uroot -p"$MARIADB_ROOT_PASSWORD" ping --silent' >/dev/null 2>&1; then
+    return 1
+  fi
+
+  # 2) minimální query ověření
+  if docker compose "${ENV_FILES[@]}" exec -T db sh -lc \
+      'mariadb -h 127.0.0.1 -uroot -p"$MARIADB_ROOT_PASSWORD" -e "SELECT 1" >/dev/null 2>&1'; then
+    return 0
+  fi
+
   return 1
 }
 

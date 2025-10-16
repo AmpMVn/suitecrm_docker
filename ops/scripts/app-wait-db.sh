@@ -1,48 +1,107 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "⏳ Waiting for DB container..."
+
+# Načti .env a .env.local do prostředí (kvůli SUITECRM_* proměnným)
+set -a
+[ -f ./.env ] && . ./.env
+[ -f ./.env.local ] && . ./.env.local
+set +a
+
 ENV_FILES=(--env-file .env)
 [ -f ./.env.local ] && ENV_FILES+=(--env-file .env.local)
 
+PROJECT_NAME="${SUITECRM_PROJECT_NAME:-suitecrm}"
+DATA_DIR="./.data/${PROJECT_NAME}/mariadb"
+AUTO_FIX="${SUITECRM_AUTO_FIX_DB:-1}"
 TRIES=60
-SLEEP=2
-REPAIRED=0
 
-echo "⏳ Testing DB login from app container (mysqli)…"
-for i in $(seq 1 "$TRIES"); do
-  # Spusť krátký PHP skript v app, vytiskni důvod chyby (connect_error)
-  if docker compose "${ENV_FILES[@]}" exec -T app sh -lc 'php -r "
-    \$h=getenv(\"DB_HOST\"); \$u=getenv(\"DB_USER\"); \$p=getenv(\"DB_PASSWORD\");
-    \$d=getenv(\"DB_NAME\"); \$port=intval(getenv(\"DB_PORT\")?:3306);
-    \$m=@new mysqli(\$h,\$u,\$p,\$d,\$port);
-    if (\$m && !\$m->connect_errno) { echo \"OK\n\"; exit(0); }
-    echo \"ERR: \".(\$m? \$m->connect_error : \"mysqli not available\").\"\n\"; exit(1);
-  "' 2>/dev/null | grep -q '^OK$'; then
-    echo "✅ App → DB login OK"
-    exit 0
-  else
-    # Získej text chyby pro rozhodnutí
-    ERR="$(docker compose "${ENV_FILES[@]}" exec -T app sh -lc 'php -r "
-      \$h=getenv(\"DB_HOST\"); \$u=getenv(\"DB_USER\"); \$p=getenv(\"DB_PASSWORD\");
-      \$d=getenv(\"DB_NAME\"); \$port=intval(getenv(\"DB_PORT\")?:3306);
-      \$m=@new mysqli(\$h,\$u,\$p,\$d,\$port);
-      echo (\$m? \$m->connect_error : \"mysqli not available\");
-    "' 2>/dev/null || true)"
+# Zajisti, že mount cílová složka existuje (jinak DB nenastartuje)
+mkdir -p "${DATA_DIR}"
+docker compose "${ENV_FILES[@]}" up -d db >/dev/null
 
-    echo "   ($i/$TRIES) … $ERR"
+CID="$(docker compose "${ENV_FILES[@]}" ps -q db || true)"
+if [[ -z "${CID}" ]]; then
+  echo "❌ DB container not found after up."
+  exit 1
+fi
 
-    # Pokud je to typické "Access denied", jednou zkusíme granty opravovat automaticky a hned retest
-    if [[ "$ERR" == Access\ denied* && "$REPAIRED" -eq 0 ]]; then
-      echo "🧯 Detected 'Access denied' from app. Repairing grants (db-ensure-user)…"
-      make db-ensure-user || true
-      REPAIRED=1
-      sleep 2
-      continue
-    fi
+# --- Test DB funkčnosti ---
+function test_db() {
+  local status health
+  status="$(docker inspect -f '{{.State.Status}}' "$CID" 2>/dev/null || echo "missing")"
+  health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$CID" 2>/dev/null || true)"
+  echo "   status=${status} health=${health}"
+
+  if [[ "${status}" != "running" ]]; then
+    return 1
   fi
-  sleep "$SLEEP"
+
+  # 1) rychlý ping (stejně jako healthcheck)
+  if ! docker compose "${ENV_FILES[@]}" exec -T db sh -lc \
+      'mariadb-admin -h 127.0.0.1 -uroot -p"$MARIADB_ROOT_PASSWORD" ping --silent' >/dev/null 2>&1; then
+    return 1
+  fi
+
+  # 2) minimální query ověření
+  if docker compose "${ENV_FILES[@]}" exec -T db sh -lc \
+      'mariadb -h 127.0.0.1 -uroot -p"$MARIADB_ROOT_PASSWORD" -e "SELECT 1" >/dev/null 2>&1'; then
+    return 0
+  fi
+
+  return 1
+}
+
+# --- První čekání ---
+for _ in $(seq 1 "${TRIES}"); do
+  if test_db; then
+    echo "✅ DB ready"
+    exit 0
+  fi
+  sleep 2
 done
 
-echo "❌ App → DB login still failing."
-docker compose "${ENV_FILES[@]}" exec -T app sh -lc 'echo "DB_HOST=$DB_HOST DB_NAME=$DB_NAME DB_USER=$DB_USER DB_PORT=$DB_PORT"'
-exit 1
+# Timeout → kontrola logu a případný self-heal
+echo "❌ DB not ready in time. Checking logs…"
+LOGS="$(docker compose "${ENV_FILES[@]}" logs --tail=200 db 2>/dev/null || true)"
+echo "${LOGS}" | tail -n 40
+
+if echo "${LOGS}" | grep -q "Access denied for user 'root'@'localhost'"; then
+  echo "🧯 Detected 'Access denied' for root."
+  if [[ "${AUTO_FIX}" != "1" ]]; then
+    echo "↪ Self-heal disabled (SUITECRM_AUTO_FIX_DB=${AUTO_FIX}). Exiting."
+    exit 1
+  fi
+
+  [[ -d "${DATA_DIR}" ]] || mkdir -p "${DATA_DIR}"
+  if [ -n "$(ls -A "${DATA_DIR}" 2>/dev/null)" ]; then
+    TS="$(date +%Y%m%d-%H%M%S)"
+    BKP="${DATA_DIR}.bak-${TS}"
+    echo "→ Stopping DB & backing up ${DATA_DIR} -> ${BKP}"
+    docker compose "${ENV_FILES[@]}" stop db >/dev/null 2>&1 || true
+    mv "${DATA_DIR}" "${BKP}"
+    mkdir -p "${DATA_DIR}"
+    echo "✅ Backup done."
+  else
+    echo "ℹ️  Data dir empty – re-init without backup."
+  fi
+
+  echo "→ Starting fresh DB…"
+  docker compose "${ENV_FILES[@]}" up -d db >/dev/null
+  CID="$(docker compose "${ENV_FILES[@]}" ps -q db || true)"
+
+  for _ in $(seq 1 "${TRIES}"); do
+    if test_db; then
+      echo "✅ DB ready after self-heal"
+      exit 0
+    fi
+    sleep 2
+  done
+
+  echo "❌ DB still not ready after self-heal."
+  exit 1
+else
+  echo "❌ DB not ready and no root 'Access denied' detected."
+  exit 1
+fi

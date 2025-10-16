@@ -115,12 +115,12 @@ ports: ## Vypíše přehled všech host portů a URL pro tuto instanci
 .PHONY: db-info
 db-info: ## Vypíše přístup k DB a otestuje spojení z hosta
 	@set -a; [ -f ./.env ] && . ./.env; [ -f ./.env.local ] && . ./.env.local; set +a; \
-	echo "Host: $${SUITECRM_WEB_HOST:-127.0.0.1}"; \
+	echo "Host: $${SUITECRM_WEB_HOST:-localhost}"; \
 	echo "Port: $${SUITECRM_DB_PORT_HOST:-3308}"; \
 	echo "User: $${SUITECRM_DB_USER:-suitecrm}"; \
 	echo "Pass: $${SUITECRM_DB_PASSWORD:-secret}"; \
 	echo "DB:   $${SUITECRM_DB_NAME:-suitecrm_suitecrm}"; \
-	nc -vz $${SUITECRM_WEB_HOST:-127.0.0.1} $${SUITECRM_DB_PORT_HOST:-3308} || true
+	nc -vz $${SUITECRM_WEB_HOST:-localhost} $${SUITECRM_DB_PORT_HOST:-3308} || true
 
 .PHONY: url
 url: ## Vypíše URL běžící instance (odvozeno z portu)
@@ -131,24 +131,18 @@ url: ## Vypíše URL běžící instance (odvozeno z portu)
 
 ##@ Setup
 
-.PHONY: fresh
-fresh: ## Kompletní fresh se self-heal DB, CLI instalací a migracemi
-	@set -a; [ -f ./.env ] && . ./.env; [ -f ./.env.local ] && . ./.env.local; set +a; \
-	WEB_HOST=$${SUITECRM_WEB_HOST:-127.0.0.1}; \
-	WEB_PORT=$${SUITECRM_WEB_PORT_HOST:-8080}; \
-	DB_PORT=$${SUITECRM_DB_PORT_HOST:-3308}; \
-	MAILHOG_PORT=$${SUITECRM_MAILHOG_PORT_HOST:-8025}; \
+.PHONY: fresh-dev
+fresh-dev: ## Fresh pro lokál (APP_ENV=dev, nainstaluje require-dev, spustí instalaci, volitelně fixtures)
+	@set -a; \
+	[ -f ./.env ] && . ./.env; [ -f ./.env.local ] && . ./.env.local; \
+	APP_ENV=dev; export APP_ENV; \
+	set +a; \
+	WEB_HOST=$${SUITECRM_WEB_HOST:-localhost}; \
+	WEB_PORT=$${SUITECRM_WEB_PORT_HOST:-8180}; \
+	DB_PORT=$${SUITECRM_DB_PORT_HOST:-3310}; \
+	MAILHOG_PORT=$${SUITECRM_MAILHOG_PORT_HOST:-8125}; \
 	echo "🚨 Killing previous stack (containers, orphans)"; \
 	docker compose $(ENV_FILES) down --remove-orphans || true; \
-	echo "🧹 Freeing web port $$WEB_PORT (if busy)"; \
-	CID=$$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:'"$$WEB_PORT"'->/ {print $$1; exit}'); \
-	if [ -n "$$CID" ]; then echo "Stopping container using $$WEB_PORT: $$CID"; docker stop "$$CID" >/dev/null; fi; \
-	echo "🧹 Freeing DB port $$DB_PORT (if busy)"; \
-	CID=$$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:'"$$DB_PORT"'->/ {print $$1; exit}'); \
-	if [ -n "$$CID" ]; then echo "Stopping container using $$DB_PORT: $$CID"; docker stop "$$CID" >/dev/null; fi; \
-	echo "🧹 Freeing Mailhog port $$MAILHOG_PORT (if busy)"; \
-	CID=$$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/:'"$$MAILHOG_PORT"'->/ {print $$1; exit}'); \
-	if [ -n "$$CID" ]; then echo "Stopping container using $$MAILHOG_PORT: $$CID"; docker stop "$$CID" >/dev/null; fi; \
 	echo "🚀 Building containers"; \
 	docker compose $(ENV_FILES) build; \
 	echo "→ Starting infra"; \
@@ -159,19 +153,72 @@ fresh: ## Kompletní fresh se self-heal DB, CLI instalací a migracemi
 	$(MAKE) db-ensure-user; \
 	echo "→ Starting app service"; \
 	docker compose $(ENV_FILES) up -d app; \
+	echo "→ Confirming DB DNS from app container"; \
+	docker compose $(ENV_FILES) exec -T app getent hosts db; \
 	echo "→ Waiting for app DB login (from app container)"; \
 	bash ops/scripts/app-wait-db.sh; \
-	echo "→ Composer install (inside app)"; \
-    docker compose $(ENV_FILES) exec -T app bash -lc 'COMPOSER_MEMORY_LIMIT=-1 composer install --no-scripts --no-interaction --prefer-dist --optimize-autoloader || true'; \
-    echo "→ SuiteCRM CLI install"; \
-	bash ops/scripts/app-install.sh; \
-	echo "→ Composer post-install (inside app)"; \
-    docker compose $(ENV_FILES) exec -T app bash -lc 'composer run-script post-install-cmd || { php bin/console cache:clear || true; php bin/console cache:warmup || true; }'; \
+	echo "→ Composer install (inside app, DEV, NO SCRIPTS)"; \
+	docker compose $(ENV_FILES) exec -T app bash -lc '\
+	  export APP_ENV=dev COMPOSER_MEMORY_LIMIT=-1 SYMFONY_SKIP_ENV_CHECK=1; \
+	  composer install --no-interaction --prefer-dist --optimize-autoloader --no-scripts'; \
+	echo "→ SuiteCRM CLI install (inside app)"; \
+	docker compose $(ENV_FILES) exec -T app bash -lc 'bash ops/scripts/app-install.sh'; \
+	echo "→ Loading doctrine fixtures (dev, if any)"; \
+	if [ "$${LOAD_FIXTURES:-1}" = "1" ]; then \
+	  docker compose $(ENV_FILES) exec -T app bash -lc '\
+	    export APP_ENV=dev; \
+	    if php bin/console -e dev help doctrine:fixtures:load >/dev/null 2>&1; then \
+	      echo "   fixtures command available → attempting to load"; \
+	      php bin/console -e dev doctrine:fixtures:load -n --no-debug || echo "   ⚠️  No fixture services detected (skip)."; \
+	    else \
+	      echo "   ⚠️  DoctrineFixturesBundle not enabled (skip)."; \
+	    fi'; \
+	else \
+	  echo "   (skipping by LOAD_FIXTURES=0)"; \
+	fi; \
 	echo "→ Bringing full stack up"; \
 	docker compose $(ENV_FILES) up -d; \
 	echo "→ Doctrine migrations (optional)"; \
 	docker compose $(ENV_FILES) exec -T app php bin/console doctrine:migrations:migrate -n || true; \
-	echo "✅ Fresh SuiteCRM ready at http://$${SUITECRM_WEB_HOST:-localhost}:$${SUITECRM_WEB_PORT_HOST:-8080}"
+	echo "✅ Fresh (dev) SuiteCRM ready at http://$${SUITECRM_WEB_HOST:-localhost}:$${SUITECRM_WEB_PORT_HOST:-8180}"
+
+.PHONY: fresh-prod
+fresh-prod: ## Fresh pro prod-like (APP_ENV=prod, bez require-dev)
+	@set -a; \
+	[ -f ./.env ] && . ./.env; [ -f ./.env.local ] && . ./.env.local; \
+	APP_ENV=prod; export APP_ENV; \
+	set +a; \
+	WEB_HOST=$${SUITECRM_WEB_HOST:-localhost}; \
+	WEB_PORT=$${SUITECRM_WEB_PORT_HOST:-8180}; \
+	DB_PORT=$${SUITECRM_DB_PORT_HOST:-3310}; \
+	MAILHOG_PORT=$${SUITECRM_MAILHOG_PORT_HOST:-8125}; \
+	echo "🚨 Killing previous stack (containers, orphans)"; \
+	docker compose $(ENV_FILES) down --remove-orphans || true; \
+	echo "🚀 Building containers"; \
+	docker compose $(ENV_FILES) build; \
+	echo "→ Starting infra"; \
+	docker compose $(ENV_FILES) up -d db redis elasticsearch mailhog; \
+	$(MAKE) db-up; \
+	$(MAKE) db-wait; \
+	$(MAKE) db-reset; \
+	$(MAKE) db-ensure-user; \
+	echo "→ Starting app service"; \
+	docker compose $(ENV_FILES) up -d app; \
+	echo "→ Confirming DB DNS from app container"; \
+	docker compose $(ENV_FILES) exec -T app getent hosts db; \
+	echo "→ Waiting for app DB login (from app container)"; \
+	bash ops/scripts/app-wait-db.sh; \
+	echo "→ Composer install (inside app, NO-DEV, NO SCRIPTS)"; \
+	docker compose $(ENV_FILES) exec -T app bash -lc '\
+	  export APP_ENV=prod COMPOSER_MEMORY_LIMIT=-1 SYMFONY_SKIP_ENV_CHECK=1; \
+	  composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts'; \
+	echo "→ SuiteCRM CLI install (inside app)"; \
+	docker compose $(ENV_FILES) exec -T app bash -lc 'bash ops/scripts/app-install.sh'; \
+	echo "→ Bringing full stack up"; \
+	docker compose $(ENV_FILES) up -d; \
+	echo "→ Doctrine migrations (optional)"; \
+	docker compose $(ENV_FILES) exec -T app php bin/console doctrine:migrations:migrate -n || true; \
+	echo "✅ Fresh (prod-like) SuiteCRM ready at http://$${SUITECRM_WEB_HOST:-localhost}:$${SUITECRM_WEB_PORT_HOST:-8180}"
 
 ##@ Utils
 

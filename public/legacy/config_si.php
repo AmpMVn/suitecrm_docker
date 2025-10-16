@@ -15,7 +15,7 @@ $sugar_config_si = array (
   'export_delimiter' => ',',
   'setup_db_admin_password' => 'secret',
   'setup_db_admin_user_name' => 'suitecrm',
-  'setup_db_port_num' => '',
+  'setup_db_port_num' => '3306',
   'setup_db_create_database' => 1,
   'setup_db_database_name' => 'suitecrm_suitecrm',
   'setup_db_drop_tables' => 0,
@@ -25,6 +25,6 @@ $sugar_config_si = array (
   'setup_db_username_is_privileged' => true,
   'setup_site_admin_password' => 'admin',
   'setup_site_admin_user_name' => 'admin',
-  'setup_site_url' => 'http://localhost:8080',
+  'setup_site_url' => '127.0.0.1:8180',
   'setup_system_name' => 'SuiteCRM',
 );
